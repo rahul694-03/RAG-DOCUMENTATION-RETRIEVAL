@@ -1,4 +1,3 @@
-
 import os
 import streamlit as st
 
@@ -9,7 +8,7 @@ from rag_utility import (
 
 
 # ---------------------------------------------------------
-# Page Configuration
+# Page configuration
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="PDF QA Bot",
@@ -19,7 +18,7 @@ st.set_page_config(
 
 
 # ---------------------------------------------------------
-# Working Directory
+# Working directory
 # ---------------------------------------------------------
 working_dir = os.path.dirname(
     os.path.abspath(__file__)
@@ -29,7 +28,7 @@ working_dir = os.path.dirname(
 # ---------------------------------------------------------
 # Title
 # ---------------------------------------------------------
-st.title("🦙 Llama-3.3-70B - Document RAG")
+st.title("🦙 Llama - Document RAG")
 
 st.write(
     "Upload a PDF and ask questions about its contents."
@@ -52,40 +51,45 @@ if uploaded_file is not None:
         uploaded_file.name
     )
 
-    # Save uploaded PDF
+    # Save PDF
     with open(save_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
 
     # Process PDF
-    with st.spinner("Processing PDF..."):
+    try:
 
-        try:
+        with st.spinner(
+            "Processing PDF... This may take a moment."
+        ):
+
             process_document_to_chroma_db(
                 uploaded_file.name
             )
 
-            st.success(
-                "✅ Document processed successfully!"
-            )
+        st.success(
+            "✅ PDF processed successfully!"
+        )
 
-        except Exception as e:
+    except Exception as e:
 
-            st.error(
-                f"❌ Error processing PDF: {e}"
-            )
+        st.error(
+            f"❌ Error processing PDF: {e}"
+        )
 
 
 # ---------------------------------------------------------
-# Question Input
+# Question
 # ---------------------------------------------------------
+st.subheader("Ask a question")
+
 user_question = st.text_area(
-    "Ask your question about the document",
+    "Enter your question:",
     placeholder="Example: What is this document about?"
 )
 
 
 # ---------------------------------------------------------
-# Answer Button
+# Answer
 # ---------------------------------------------------------
 if st.button("🔍 Answer"):
 
@@ -108,25 +112,24 @@ if st.button("🔍 Answer"):
 
     else:
 
-        with st.spinner("🦙 Llama is thinking..."):
+        try:
 
-            try:
+            with st.spinner(
+                "🦙 Generating answer..."
+            ):
 
                 answer = answer_question(
                     user_question
                 )
 
-                st.markdown(
-                    "### 🦙 Llama-3.3-70B Response"
-                )
+            st.markdown(
+                "### 🦙 Answer"
+            )
 
-                st.write(answer)
+            st.write(answer)
 
-            except Exception as e:
+        except Exception as e:
 
-                st.error(
-                    f"❌ Error generating answer: {e}"
-                )
-
-
-
+            st.error(
+                f"❌ Error generating answer: {e}"
+            )

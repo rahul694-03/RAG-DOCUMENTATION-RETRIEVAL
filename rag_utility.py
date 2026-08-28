@@ -1,6 +1,4 @@
-
 import os
-
 from dotenv import load_dotenv
 
 from langchain_community.document_loaders import (
@@ -32,68 +30,61 @@ from langchain_core.output_parsers import (
 )
 
 
-# =========================================================
-# Load Environment Variables
-# =========================================================
-
+# ---------------------------------------------------------
+# Load environment variables
+# ---------------------------------------------------------
 load_dotenv()
-
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-
-
-# Check Groq API key
-if not GROQ_API_KEY:
-
-    raise ValueError(
-        "GROQ_API_KEY is missing. "
-        "Please create a .env file and add your Groq API key."
-    )
-
-
-# =========================================================
-# Working Directory
-# =========================================================
 
 working_dir = os.path.dirname(
     os.path.abspath(__file__)
 )
 
 
-# =========================================================
-# HuggingFace Embedding Model
-# =========================================================
+# ---------------------------------------------------------
+# Check Groq API key
+# ---------------------------------------------------------
+groq_api_key = os.getenv(
+    "GROQ_API_KEY"
+)
 
+if not groq_api_key:
+
+    raise ValueError(
+        "GROQ_API_KEY is not set. "
+        "Please add it to your .env file."
+    )
+
+
+# ---------------------------------------------------------
+# HuggingFace Embeddings
+# ---------------------------------------------------------
 embedding = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
 
 
-# =========================================================
-# Groq Llama 3.3 70B
-# =========================================================
-
+# ---------------------------------------------------------
+# Groq LLM
+# ---------------------------------------------------------
 llm = ChatGroq(
-    model="openai/gpt-oss-120b",
-    temperature=0,
-    api_key=GROQ_API_KEY
-
+    api_key=groq_api_key,
+    model="llama-3.3-70b-versatile",
+    temperature=0
 )
 
 
-# =========================================================
-# Chroma Database Path
-# =========================================================
-
+# ---------------------------------------------------------
+# Chroma database path
+# ---------------------------------------------------------
 VECTORSTORE_PATH = os.path.join(
     working_dir,
     "doc_vectorstore"
 )
 
 
-# =========================================================
+# ---------------------------------------------------------
 # Process PDF
-# =========================================================
-
+# ---------------------------------------------------------
 def process_document_to_chroma_db(file_name):
 
     pdf_path = os.path.join(
@@ -101,15 +92,22 @@ def process_document_to_chroma_db(file_name):
         file_name
     )
 
-    # -----------------------------------------------------
-    # Load PDF
-    # -----------------------------------------------------
+    if not os.path.exists(pdf_path):
 
+        raise FileNotFoundError(
+            f"PDF not found: {pdf_path}"
+        )
+
+
+    # -----------------------------------------------------
+    # Load PDF using UnstructuredPDFLoader
+    # -----------------------------------------------------
     loader = UnstructuredPDFLoader(
         pdf_path
     )
 
     documents = loader.load()
+
 
     if not documents:
 
@@ -119,17 +117,17 @@ def process_document_to_chroma_db(file_name):
 
 
     # -----------------------------------------------------
-    # Split Text
+    # Split text
     # -----------------------------------------------------
-
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=2000,
+        chunk_size=1500,
         chunk_overlap=200
     )
 
     texts = text_splitter.split_documents(
         documents
     )
+
 
     if not texts:
 
@@ -139,28 +137,36 @@ def process_document_to_chroma_db(file_name):
 
 
     # -----------------------------------------------------
-    # Create Chroma Vector Database
+    # Create Chroma vector database
     # -----------------------------------------------------
-
     Chroma.from_documents(
         documents=texts,
         embedding=embedding,
         persist_directory=VECTORSTORE_PATH
     )
 
+
     return True
 
 
-# =========================================================
-# Answer Question
-# =========================================================
-
+# ---------------------------------------------------------
+# Answer question
+# ---------------------------------------------------------
 def answer_question(user_question):
 
-    # -----------------------------------------------------
-    # Load Chroma Database
-    # -----------------------------------------------------
+    if not os.path.exists(
+        VECTORSTORE_PATH
+    ):
 
+        raise ValueError(
+            "Vector database does not exist. "
+            "Please upload a PDF first."
+        )
+
+
+    # -----------------------------------------------------
+    # Load Chroma
+    # -----------------------------------------------------
     vectordb = Chroma(
         persist_directory=VECTORSTORE_PATH,
         embedding_function=embedding
@@ -168,9 +174,8 @@ def answer_question(user_question):
 
 
     # -----------------------------------------------------
-    # Create Retriever
+    # Retriever
     # -----------------------------------------------------
-
     retriever = vectordb.as_retriever(
         search_kwargs={
             "k": 4
@@ -181,15 +186,15 @@ def answer_question(user_question):
     # -----------------------------------------------------
     # Prompt
     # -----------------------------------------------------
-
     prompt = ChatPromptTemplate.from_template(
         """
 You are a helpful PDF question-answering assistant.
 
-Answer the user's question using ONLY the information
-provided in the context.
+Answer the question using ONLY the information
+contained in the context below.
 
-If the answer cannot be found in the context, say:
+If the answer is not available in the context,
+say exactly:
 
 "I could not find the answer in the uploaded document."
 
@@ -207,39 +212,40 @@ Answer:
 
 
     # -----------------------------------------------------
-    # Format Retrieved Documents
+    # Format documents
     # -----------------------------------------------------
-
     def format_docs(docs):
 
         return "\n\n".join(
-            document.page_content
-            for document in docs
+            doc.page_content
+            for doc in docs
         )
 
 
     # -----------------------------------------------------
-    # RAG Chain
+    # RAG chain
     # -----------------------------------------------------
-
     rag_chain = (
+
         {
             "context": retriever | format_docs,
             "question": RunnablePassthrough()
         }
+
         | prompt
+
         | llm
+
         | StrOutputParser()
     )
 
 
     # -----------------------------------------------------
-    # Generate Answer
+    # Generate answer
     # -----------------------------------------------------
-
     answer = rag_chain.invoke(
         user_question
     )
 
-    return answer
 
+    return answer
